@@ -1,6 +1,7 @@
 import streamlit as st
 
-from langchain.text_splitter import CharacterTextSplitter
+#from langchain.text_splitter import CharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.chat_models import ChatOpenAI
@@ -9,6 +10,7 @@ from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import ChatMessage
 
 from dotenv import load_dotenv
+from langchain.document_loaders import YoutubeLoader
 
 load_dotenv()
 
@@ -21,6 +23,7 @@ class StreamHandler(BaseCallbackHandler):
     def on_llm_new_token(self, token: str, **kwargs) -> None:
         self.text += token
         self.container.markdown(self.text)
+
 
 # function to extract text from an HWP file
 import olefile
@@ -87,55 +90,124 @@ def get_pdf_text(filename):
     return raw_text
 
 # document preprocess
-def process_uploaded_file(uploaded_file):
-    # Load document if file is uploaded
-    if uploaded_file is not None:
-        # loader
-        # pdf파일을 처리하려면?
-        if uploaded_file.type == 'application/pdf':
-            raw_text = get_pdf_text(uploaded_file)
-        # hwp파일을 처리하려면? (hwp loader(parser)는 난이도 매우 어려움)
-        elif uploaded_file.type == 'application/octet-stream':
-            raw_text = get_hwp_text(uploaded_file)
+#def process_uploaded_file(uploaded_file):
+#    # Load document if file is upload노트
+#    if uploaded_file is not None:
+#        # loader
+#        # pdf파일을 처리하려면?
+#        if uploaded_file.type == 'application/pdf':
+#            raw_text = get_pdf_text(uploaded_file)
+#                    
+#        # splitter
+#        text_splitter = CharacterTextSplitter(
+#            separator = "\n\n",
+#            chunk_size = 1000,
+#            chunk_overlap  = 200,
+#            length_function = len,
+#            is_separator_regex = False,
+#        )
+#        all_splits = text_splitter.create_documents([raw_text])
+#        print("총 " + str(len(all_splits)) + "개의 passage")
+#        
+#        # storage
+#        vectorstore = FAISS.from_documents(documents=all_splits, embedding=OpenAIEmbeddings())
+#                
+#        return vectorstore, raw_text
+#    return None
 
-        # splitter
-        text_splitter = CharacterTextSplitter(
-            separator = "\n\n",
-            chunk_size = 1000,
-            chunk_overlap  = 200,
-            length_function = len,
-            is_separator_regex = False,
-        )
-        all_splits = text_splitter.create_documents([raw_text])
-        print("총 " + str(len(all_splits)) + "개의 passage")
-        
-        # storage
-        vectorstore = FAISS.from_documents(documents=all_splits, embedding=OpenAIEmbeddings())
+def process_uploaded_files(uploaded_files):
+    vectorstores = {}
+    raw_texts = {}
+    try:
+        for i, uploaded_file in enumerate(uploaded_files):
+            if uploaded_file.type == 'application/pdf':
+                raw_text = get_pdf_text(uploaded_file)
+            else:
+                st.error(f"Unsupported file type: {uploaded_file.type}")
+                continue
 
-        return vectorstore, raw_text
-    return None
+            raw_text = raw_text.replace('\n\n', '\n').strip()
+
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=500,
+                chunk_overlap=50
+            )
+            all_splits = text_splitter.create_documents([raw_text])
+            st.write(f"Lecture {i+1} 총 " + str(len(all_splits)) + "개의 passage")
+            
+            vectorstore = FAISS.from_documents(documents=all_splits, embedding=OpenAIEmbeddings())
+            vectorstores[f'Lecture {i+1}'] = vectorstore
+            raw_texts[f'Lecture {i+1}'] = raw_text
+
+        return vectorstores, raw_texts
+    except Exception as e:
+        st.error(f"Error processing files: {e}")
+        return None, None
+
+def get_script(url, language="en", add_video_info=True):
+    loader = YoutubeLoader.from_youtube_url(
+        url,
+        add_video_info=add_video_info,
+        language=language,
+    )
+    return loader.load()
+
+def process_youtube_scripts(lecture_urls):
+    youtube_scripts = {}
+    try:
+        for lecture, urls in lecture_urls.items():
+            scripts = []
+            for url in urls:
+                try:
+                    script = get_script(url)
+                    scripts.append(script)
+                except Exception as e:
+                    st.error(f"Error loading script for {url}: {e}")
+            youtube_scripts[lecture] = scripts
+        return youtube_scripts
+    except Exception as e:
+        st.error(f"Error processing YouTube scripts: {e}")
+        return None
 
 # generate response using RAG technic
-def generate_response(query_text, vectorstore, callback):
+def generate_response(query_text, pdf_vectorstore, youtube_vectorstore, callback):
+    pdf_docs = pdf_vectorstore.similarity_search(query_text, k=5)
+    pdf_text = "".join([f"'문서{i+1}': {doc.page_content}\n" for i, doc in enumerate(pdf_docs)])
+    
+    youtube_docs = youtube_vectorstore.similarity_search(query_text, k=5)
+    youtube_text = "".join([f"'비디오{i+1}': {doc.page_content}\n" for i, doc in enumerate(youtube_docs)])
 
-    # retriever
-    docs_list = vectorstore.similarity_search(query_text, k=3)
-    docs = ""
-    for i, doc in enumerate(docs_list):
-        docs += f"'문서{i+1}':{doc.page_content}\n"
-    print(docs)
-        
+    examples = [
+        {
+            "role": "user",
+            "content": "강의노트에서 '전기 회로'에 대한 설명을 알려줘."
+        },
+        {
+            "role": "assistant",
+            "content": "전기 회로는 전기가 흐르는 통로를 말합니다. 전기 회로는 배터리, 전선, 저항, 전구 등으로 구성됩니다. 전기가 흐르기 위해서는 회로가 닫혀 있어야 합니다. 예를 들어, 배터리에서 나온 전기가 전선을 통해 저항과 전구를 거쳐 다시 배터리로 돌아가는 경로가 완성될 때 전기 회로가 됩니다. 🔋➡️💡"
+        },
+        {
+            "role": "user",
+            "content": "강의노트에서 '진동'에 대한 설명을 알려줘."
+        },
+        {
+            "role": "assistant",
+            "content": "진동은 물체가 일정한 간격으로 반복해서 움직이는 현상을 말합니다. 예를 들어, 시계의 추나 기타 줄의 움직임이 진동의 예입니다. 진동의 주기와 진폭은 각각 진동이 한 번 완료되는 데 걸리는 시간과 진동의 최대 변위입니다. 🎸↔️🎶"
+        }
+    ]
+    
     # generator
-    llm = ChatOpenAI(model_name="gpt-4", temperature=0, streaming=True, callbacks=[callback])
+    llm = ChatOpenAI(model_name="gpt-4o", temperature=0.2, streaming=True, callbacks=[callback])
     
     # chaining
     rag_prompt = [
         SystemMessage(
-            content="너는 문서에 대해 질의응답을 하는 '서울대'야. 주어진 문서를 참고하여 사용자의 질문에 답변을 해줘. 문서에 내용이 정확하게 나와있지 않으면 너의 지식 선에서 잘 얘기해줘. 답변은 이모티콘을 넣어서 귀엽고 깜찍하게 해줘! 답변을 잘하면 200달러 팁을 줄게"
+            content="너는 강의노트와 YouTube 강의 링크에 대해 질의응답을 하는 '교수'야. 주어진 강의노트와 YouTube 강의 링크를 참고하여 사용자의 질문에 답변을 해줘. 노트에 내용이 정확하게 나와있지 않으면 너의 지식 선에서 잘 얘기해줘. 답변은 논리적으로 이해 하기 쉽게 예를 들어서 설명해줘. 이모티콘을 적절히 추가하여 이해를 도와줘! 답변을 잘하면 200달러 팁을 줄게"
         ),
         HumanMessage(
-            content=f"질문:{query_text}\n\n{docs}"
+            content=f"질문:{query_text}\n\n강의노트:\n{pdf_text}\n\nYouTube 강의 내용:\n{youtube_text}"
         ),
+        *examples
     ]
 
     response = llm(rag_prompt)
@@ -145,7 +217,7 @@ def generate_response(query_text, vectorstore, callback):
 
 def generate_summarize(raw_text, callback):
     # generator 
-    llm = ChatOpenAI(model_name="gpt-4-1106-preview", temperature=0, streaming=True, callbacks=[callback])
+    llm = ChatOpenAI(model_name="gpt-4o", temperature=0.2, streaming=True, callbacks=[callback])
     
     # prompt formatting
     rag_prompt = [
@@ -162,9 +234,10 @@ def generate_summarize(raw_text, callback):
 
 
 # page title
-st.set_page_config(page_title='🦜🔗 서울대학교 문서 기반 요약 및 QA 챗봇')
-st.title('🦜🔗 서울대학교 문서 기반 요약 및 QA 챗봇')
+st.set_page_config(page_title='🎓 CS182 강의봇 🤖')
+st.title('🎓 CS182 강의봇 🤖')
 
+# enter token
 import os
 api_key = st.sidebar.text_input("Enter your OpenAI API Key", type="password")
 save_button = st.sidebar.button("Save Key")
@@ -173,7 +246,7 @@ if save_button and len(api_key)>10:
     st.sidebar.success("API Key saved successfully!")
 
 # file upload
-uploaded_file = st.file_uploader('Upload an document', type=['hwp','pdf'])
+uploaded_file = st.file_uploader('Upload lecture PDFs', type=['pdf'], accept_multiple_files=True)
 
 # file upload logic
 if uploaded_file:
@@ -181,12 +254,116 @@ if uploaded_file:
     if vectorstore:
         st.session_state['vectorstore'] = vectorstore
         st.session_state['raw_text'] = raw_text
-        
+
+lecture_titles = [
+    "Lecture 1: Introduction.",
+    "Lecture 2: ML Basics 1.",
+    "Lecture 3: ML Basics 2.",
+    "Lecture 4: Optimization.",
+    "Lecture 5: Backpropagation.",
+    "Lecture 6: Convolutional Nets.",
+    "Lecture 7: Getting Neural Nets to Train.",
+    "Lecture 8: Computer Vision.",
+    "Lecture 9: Generating Images from CNNs.",
+    "Lecture 10: Recurrent Neural Networks.",
+    "Lecture 11: Sequence To Sequence Models.",
+    "Lecture 12: Transformers.",
+    "Lecture 13: Applications: NLP.",
+    "Lecture 14: Learning-Based Control & Imitation.",
+    "Lecture 15: Reinforcement Learning.",
+    "Lecture 16: Q-Learning.",
+    "Lecture 17: Autoencoders & Latent Variable Models.",
+    "Lecture 18: Variational Autoencoders & Invertible Models.",
+    "Lecture 19: Generative Adversarial Networks.",
+    "Lecture 20: Adversarial Examples.",
+    "Lecture 21: Meta Learning."
+]
+lecture_urls = {
+    "Lecture 1": [
+        "https://youtu.be/rSY1pVGdZ4I?si=HJ0w04z57oSg3l2T",
+        "https://youtu.be/FHsGHxQYxvc?si=swR3M09Xdjk2SJWP",
+        "https://youtu.be/s2B0c_o_rbw?si=eZckP8Pyg4fM_Fks"
+    ],
+    "Lecture 2": [
+        "https://youtu.be/aUNnGCxvAg0?si=3J7nzJWWkXpRCBLA",
+        "https://youtu.be/oLc822BT-K4?si=SiefY6V5gHgrxsSg",
+        "https://youtu.be/zY2QgvPfSm8?si=1f6G4Lplz1KU3CSe",
+        "https://youtu.be/voJ4qSH-uqw?si=78149mesZb3s7Q_w"
+    ],
+    "Lecture 3": [
+        "https://youtu.be/PBYWWM9We-0?si=h4r-KtBupFJg3keO",
+        "https://youtu.be/U_cpdaJ-adk?si=NtW8t0ePyBVb21Jj",
+        "https://youtu.be/-BKfF-odbSQ?si=Xhc9iuIoNLEymFon"
+    ],
+    "Lecture 4": [
+        "https://youtu.be/RdoZWcXmXhk?si=N5LuULe3QIgSMRIm",
+        "https://youtu.be/fg3GyrfcclY?si=eWTtemPPOTP2rZrj",
+        "https://youtu.be/CO3-sFmADfI?si=lQA0eQOcm4VuRVKd"
+    ],
+    "Lecture 5": [
+        "https://youtu.be/lKRatcD9hEg?si=r5jvTTkdEkJfLroF",
+        "https://youtu.be/hpS8oIEQzcs?si=49QCQNknyEEwnqFE",
+        "https://youtu.be/JXX5Ea0TXTM?si=J4ZnAEfw0bWxzQDN"
+    ],
+    "Lecture 6": [
+        "https://youtu.be/jNW1Hi7Yi4c?si=M9WySH60Fu_ACYSQ",
+        "https://youtu.be/xAcAWaeUxYs?si=U00725uJOmw3Kc68",
+        "https://youtu.be/HlJ8rpwKH5c?si=wZxQ54C3rqWt3IOV"
+    ],
+    "Lecture 7": [
+        "https://youtu.be/0dNAhN4ypFc?si=fhPcIy_ZOLBZaYsL",
+        "https://youtu.be/k5uLipr49zQ?si=3UJobqmLZ2dvdsfR",
+        "https://youtu.be/Nx48Idc0_68?si=2YCsgZdxRbaKqTCi"
+    ],
+    "Lecture 8": [
+        "https://youtu.be/MgabSQ93IE8?si=jnehT9qW1AAnKRMS",
+        "https://youtu.be/XHrSobup-vU?si=NKbwf4jeyeXljS68",
+        "https://youtu.be/gAH5dH2uTc0?si=BsZS33KsXDPi7996",
+        "https://youtu.be/LACVGqw29J0?si=6zCKYMdH7z5FEuQl"
+    ],
+    "Lecture 9": [
+        "https://youtu.be/VKPkM6jt_P0?si=yskt4ZNb7ZOpkvUy",
+        "https://youtu.be/AsGaxH7vizk?si=wK3z9cjugbYRNd3I",
+        "https://youtu.be/vyfq3SgXQyU?si=NALHovpFSjvxXQYg"
+    ],
+    "Lecture 10": [
+        "https://youtu.be/PyZvbaC5oQY?si=rBY8s8ZYVXFqry4G",
+        "https://youtu.be/BOyQQbQzKG4?si=xDzo7xyhQ7_PuR-x",
+        "https://youtu.be/EFbKmZdB61g?si=zOyt0b5u1mnJ0DcO"
+    ],
+    "Lecture 11": [
+        "https://youtu.be/36RjPbbcA28?si=KT2pgr0-cEHiMuNm",
+        "https://youtu.be/VX5_uKOUliE?si=5hpggIGAOg8n6_fK",
+        "https://youtu.be/49wn_m7JE-c?si=4ip0JWDjyvCGmiRE"
+    ],
+}
+
+if "youtube_scripts" not in st.session_state:
+    st.session_state["youtube_scripts"] = process_youtube_scripts(lecture_urls)
+
+if "youtube_vectorstores" not in st.session_state:
+    youtube_vectorstores = {}
+    for lecture, scripts in st.session_state["youtube_scripts"].items():
+        all_splits = []
+        for script in scripts:
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=500,
+                chunk_overlap=50
+            )
+            splits = text_splitter.create_documents([script.page_content])
+            all_splits.extend(splits)
+        vectorstore = FAISS.from_documents(documents=all_splits, embedding=OpenAIEmbeddings())
+        youtube_vectorstores[lecture] = vectorstore
+    st.session_state['youtube_vectorstores'] = youtube_vectorstores
+
+st.sidebar.header("강의 목록")
+selected_lecture = st.sidebar.selectbox("강의를 선택하세요", lecture_titles)
+
 # chatbot greatings
 if "messages" not in st.session_state:
     st.session_state["messages"] = [
         ChatMessage(
-            role="assistant", content="하이 :)  저는 서울대학교 문서에 대한 이해를 도와주는 챗봇입니다. 어떤게 궁금하신가요?"
+            role="assistant", content="안녕하세요✋! 저는 CS182 강의에 대한 이해를 도와주는 챗봇입니다. 어떤게 궁금하신가요?"
         )
     ]
 
@@ -195,21 +372,22 @@ for msg in st.session_state.messages:
     st.chat_message(msg.role).write(msg.content)
     
 # message interaction
-if prompt := st.chat_input("'요약'이라고 입력해보세요!"):
+if prompt := st.chat_input(f"'{selected_lecture}'에 대한 질문을 입력해보세요!"):
     st.session_state.messages.append(ChatMessage(role="user", content=prompt))
     st.chat_message("user").write(prompt)
 
     with st.chat_message("assistant"):
         stream_handler = StreamHandler(st.empty())
-        
-        if prompt == "요약":
-            response = generate_summarize(st.session_state['raw_text'],stream_handler)
-            st.session_state["messages"].append(
-                ChatMessage(role="assistant", content=response)
-            )
-        
+        lecture_key = selected_lecture.split(":")[0]
+        if "요약" in prompt.lower():
+            response = generate_summarize(st.session_state['raw_texts'][lecture_key], stream_handler)
         else:
-            response = generate_response(prompt, st.session_state['vectorstore'], stream_handler)
-            st.session_state["messages"].append(
-                ChatMessage(role="assistant", content=response)
+            response = generate_response(
+                prompt,
+                st.session_state['vectorstores'][lecture_key],
+                st.session_state['youtube_vectorstores'][lecture_key],
+                stream_handler
             )
+        
+        st.session_state["messages"].append(ChatMessage(role="assistant", content=response))
+        st.chat_message("assistant").write(response)
