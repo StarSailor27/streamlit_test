@@ -246,6 +246,9 @@ if 'vectorstores' not in st.session_state:
 if 'youtube_vectorstores' not in st.session_state:
     st.session_state['youtube_vectorstores'] = {}
 
+if 'youtube_scripts' not in st.session_state:
+    st.session_state['youtube_scripts'] = {}
+
 # file upload
 uploaded_file = st.file_uploader('Upload lecture PDFs', type=['pdf'], accept_multiple_files=True)
 
@@ -334,8 +337,8 @@ selected_lecture = st.sidebar.selectbox("강의를 선택하세요", lecture_tit
 
 if selected_lecture:
     lecture_key = selected_lecture.split(":")[0]
-    if "youtube_scripts" not in st.session_state:
-        st.session_state["youtube_scripts"] = {}
+    #if "youtube_scripts" not in st.session_state:
+    #    st.session_state["youtube_scripts"] = {}
     
     if lecture_key not in st.session_state["youtube_scripts"]:
         st.session_state["youtube_scripts"][lecture_key] = load_youtube_scripts(lecture_urls[lecture_key])
@@ -381,16 +384,21 @@ if prompt := st.chat_input(f"'{selected_lecture}'에 대한 질문을 입력해�
 
     with st.chat_message("assistant"):
         stream_handler = StreamHandler(st.empty())
-        lecture_key = selected_lecture.split(":")[0]
         if "요약" in prompt.lower():
-            response = generate_summarize(st.session_state['raw_texts'][lecture_key], stream_handler)
+            if lecture_key in st.session_state['raw_texts']:
+                response = generate_summarize(st.session_state['raw_texts'][lecture_key], stream_handler)
+            else:
+                response = "선택된 강의에 대한 원본 텍스트가 없습니다."
         else:
-            response = generate_response(
-                prompt,
-                st.session_state['vectorstores'][lecture_key],
-                st.session_state['youtube_vectorstores'][lecture_key],
-                stream_handler
-            )
+            if lecture_key in st.session_state['vectorstores'] and lecture_key in st.session_state['youtube_vectorstores']:
+                response = generate_response(
+                    prompt,
+                    st.session_state['vectorstores'][lecture_key],
+                    st.session_state['youtube_vectorstores'][lecture_key],
+                    stream_handler
+                )
+            else:
+                response = "선택된 강의에 대한 데이터가 없습니다."
         
         st.session_state["messages"].append(ChatMessage(role="assistant", content=response))
         st.chat_message("assistant").write(response)
