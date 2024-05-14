@@ -152,7 +152,7 @@ def get_script(url, language="en", add_video_info=True):
     )
     return loader.load()
 
-def process_youtube_scripts(lecture_urls):
+def load_youtube_scripts(lecture_urls):
     youtube_scripts = {}
     try:
         for lecture, urls in lecture_urls.items():
