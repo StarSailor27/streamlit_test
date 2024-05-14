@@ -382,23 +382,22 @@ if prompt := st.chat_input(f"'{selected_lecture}'에 대한 질문을 입력해�
     st.session_state.messages.append(ChatMessage(role="user", content=prompt))
     st.chat_message("user").write(prompt)
 
-    with st.chat_message("assistant"):
-        stream_handler = StreamHandler(st.empty())
-        if "요약" in prompt.lower():
-            if lecture_key in st.session_state['raw_texts']:
-                response = generate_summarize(st.session_state['raw_texts'][lecture_key], stream_handler)
-            else:
-                response = "선택된 강의에 대한 원본 텍스트가 없습니다."
+    stream_handler = StreamHandler(st.empty())
+    if "요약" in prompt.lower():
+        if lecture_key in st.session_state['raw_texts']:
+            response = generate_summarize(st.session_state['raw_texts'][lecture_key], stream_handler)
         else:
-            if lecture_key in st.session_state['vectorstores'] and lecture_key in st.session_state['youtube_vectorstores']:
-                response = generate_response(
-                    prompt,
-                    st.session_state['vectorstores'][lecture_key],
-                    st.session_state['youtube_vectorstores'][lecture_key],
-                    stream_handler
-                )
-            else:
-                response = "선택된 강의에 대한 데이터가 없습니다."
-        
-        st.session_state["messages"].append(ChatMessage(role="assistant", content=response))
-        st.chat_message("assistant").write(response)
+            response = "선택된 강의에 대한 원본 텍스트가 없습니다."
+    else:
+        if lecture_key in st.session_state['vectorstores'] and lecture_key in st.session_state['youtube_vectorstores']:
+            response = generate_response(
+                prompt,
+                st.session_state['vectorstores'][lecture_key],
+                st.session_state['youtube_vectorstores'][lecture_key],
+                stream_handler
+            )
+        else:
+            response = "선택된 강의에 대한 데이터가 없습니다."
+
+    st.session_state["messages"].append(ChatMessage(role="assistant", content=response))
+    st.chat_message("assistant").write(response)
