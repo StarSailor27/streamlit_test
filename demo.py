@@ -239,6 +239,13 @@ if save_button and len(api_key)>10:
     os.environ["OPENAI_API_KEY"] = api_key
     st.sidebar.success("API Key saved successfully!")
 
+# 초기화 코드 추가
+if 'vectorstores' not in st.session_state:
+    st.session_state['vectorstores'] = {}
+
+if 'youtube_vectorstores' not in st.session_state:
+    st.session_state['youtube_vectorstores'] = {}
+
 # file upload
 uploaded_file = st.file_uploader('Upload lecture PDFs', type=['pdf'], accept_multiple_files=True)
 
@@ -333,8 +340,8 @@ if selected_lecture:
     if lecture_key not in st.session_state["youtube_scripts"]:
         st.session_state["youtube_scripts"][lecture_key] = load_youtube_scripts(lecture_urls[lecture_key])
 
-    if "youtube_vectorstores" not in st.session_state:
-        st.session_state["youtube_vectorstores"] = {}
+    #if "youtube_vectorstores" not in st.session_state:
+    #    st.session_state["youtube_vectorstores"] = {}
     
     if lecture_key not in st.session_state["youtube_vectorstores"]:
         scripts = st.session_state["youtube_scripts"][lecture_key]
