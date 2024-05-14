@@ -152,22 +152,16 @@ def get_script(url, language="en", add_video_info=True):
     )
     return loader.load()
 
-def load_youtube_scripts(lecture_urls):
-    youtube_scripts = {}
-    try:
-        for lecture, urls in lecture_urls.items():
-            scripts = []
-            for url in urls:
-                try:
-                    script = get_script(url)
-                    scripts.append(script)
-                except Exception as e:
-                    st.error(f"Error loading script for {url}: {e}")
-            youtube_scripts[lecture] = scripts
-        return youtube_scripts
-    except Exception as e:
-        st.error(f"Error processing YouTube scripts: {e}")
-        return None
+def load_youtube_scripts(urls):
+    scripts = []
+    for url in urls:
+        try:
+            script = get_script(url)
+            for doc in script:
+                scripts.append(doc.page_content)  # Ensure we extract the correct content
+        except Exception as e:
+            st.error(f"Error loading script for {url}: {e}")
+    return scripts
 
 # generate response using RAG technic
 def generate_response(query_text, pdf_vectorstore, youtube_vectorstore, callback):
