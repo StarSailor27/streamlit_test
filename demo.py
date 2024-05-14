@@ -249,6 +249,9 @@ if 'youtube_vectorstores' not in st.session_state:
 if 'youtube_scripts' not in st.session_state:
     st.session_state['youtube_scripts'] = {}
 
+if 'raw_texts' not in st.session_state:
+    st.session_state['raw_texts'] = {}
+
 # file upload
 uploaded_file = st.file_uploader('Upload lecture PDFs', type=['pdf'], accept_multiple_files=True)
 
