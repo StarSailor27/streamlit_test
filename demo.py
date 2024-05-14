@@ -115,7 +115,7 @@ def get_pdf_text(filename):
 #        return vectorstore, raw_text
 #    return None
 
-def process_uploaded_files(uploaded_files):
+def process_uploaded_file(uploaded_files):
     vectorstores = {}
     raw_texts = {}
     try:
