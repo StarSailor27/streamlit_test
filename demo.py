@@ -1,6 +1,4 @@
 import streamlit as st
-
-#from langchain.text_splitter import CharacterTextSplitter
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.embeddings import OpenAIEmbeddings
@@ -8,7 +6,6 @@ from langchain.chat_models import ChatOpenAI
 from langchain.schema import HumanMessage, SystemMessage
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import ChatMessage
-
 from dotenv import load_dotenv
 from langchain.document_loaders import YoutubeLoader
 
@@ -24,7 +21,6 @@ class StreamHandler(BaseCallbackHandler):
         self.text += token
         self.container.markdown(self.text)
 
-
 # function to extract text from an HWP file
 import olefile
 import zlib
@@ -35,8 +31,7 @@ def get_hwp_text(filename):
     dirs = f.listdir()
 
     # HWP 파일 검증
-    if ["FileHeader"] not in dirs or \
-       ["\x05HwpSummaryInformation"] not in dirs:
+    if ["FileHeader"] not in dirs or ["\x05HwpSummaryInformation"] not in dirs:
         raise Exception("Not Valid HWP.")
 
     # 문서 포맷 압축 여부 확인
@@ -82,7 +77,7 @@ def get_hwp_text(filename):
 
     return text
 
-# Function to extract text from an PDF file
+# Function to extract text from a PDF file
 from pdfminer.high_level import extract_text
 
 def get_pdf_text(filename):
@@ -90,32 +85,7 @@ def get_pdf_text(filename):
     return raw_text
 
 # document preprocess
-#def process_uploaded_file(uploaded_file):
-#    # Load document if file is upload노트
-#    if uploaded_file is not None:
-#        # loader
-#        # pdf파일을 처리하려면?
-#        if uploaded_file.type == 'application/pdf':
-#            raw_text = get_pdf_text(uploaded_file)
-#                    
-#        # splitter
-#        text_splitter = CharacterTextSplitter(
-#            separator = "\n\n",
-#            chunk_size = 1000,
-#            chunk_overlap  = 200,
-#            length_function = len,
-#            is_separator_regex = False,
-#        )
-#        all_splits = text_splitter.create_documents([raw_text])
-#        print("총 " + str(len(all_splits)) + "개의 passage")
-#        
-#        # storage
-#        vectorstore = FAISS.from_documents(documents=all_splits, embedding=OpenAIEmbeddings())
-#                
-#        return vectorstore, raw_text
-#    return None
-
-def process_uploaded_file(uploaded_files):
+def process_uploaded_files(uploaded_files):
     vectorstores = {}
     raw_texts = {}
     try:
@@ -190,13 +160,11 @@ def generate_response(query_text, pdf_vectorstore, youtube_vectorstore, callback
         }
     ]
     
-    # generator
-    llm = ChatOpenAI(model_name="gpt-4o", temperature=0.2, streaming=True, callbacks=[callback])
+    llm = ChatOpenAI(model_name="gpt-4", temperature=0.2, streaming=True, callbacks=[callback])
     
-    # chaining
     rag_prompt = [
         SystemMessage(
-            content="너는 강의노트와 YouTube 강의 링크에 대해 질의응답을 하는 '교수'야. 주어진 강의노트와 YouTube 강의 링크를 참고하여 사용자의 질문에 답변을 해줘. 노트에 내용이 정확하게 나와있지 않으면 너의 지식 선에서 잘 얘기해줘. 답변은 논리적으로 이해 하기 쉽게 예를 들어서 설명해줘. 이모티콘을 적절히 추가하여 이해를 도와줘! 답변을 잘하면 200달러 팁을 줄게"
+            content="너는 강의노트와 YouTube 강의 링크에 대해 질의응답을 하는 '교수'야. 주어진 강의노트와 YouTube 강의 링크를 참고하여 사용자의 질문에 답변을 해줘. 노트에 내용이 정확하게 나와있지 않으면 너의 지식 선에서 잘 얘기해줘. 답변은 논리적으로 이해하기 쉽게 예를 들어서 설명해줘. 이모티콘을 적절히 추가하여 이해를 도와줘! 답변을 잘하면 200달러 팁을 줄게"
         ),
         HumanMessage(
             content=f"질문:{query_text}\n\n강의노트:\n{pdf_text}\n\nYouTube 강의 내용:\n{youtube_text}"
@@ -210,10 +178,8 @@ def generate_response(query_text, pdf_vectorstore, youtube_vectorstore, callback
 
 
 def generate_summarize(raw_text, callback):
-    # generator 
-    llm = ChatOpenAI(model_name="gpt-4o", temperature=0.2, streaming=True, callbacks=[callback])
+    llm = ChatOpenAI(model_name="gpt-4", temperature=0.2, streaming=True, callbacks=[callback])
     
-    # prompt formatting
     rag_prompt = [
         SystemMessage(
             content="다음 나올 문서를 'Notion style'로 요약해줘. 중요한 내용만."
@@ -226,7 +192,6 @@ def generate_summarize(raw_text, callback):
     response = llm(rag_prompt)
     return response.content
 
-
 # page title
 st.set_page_config(page_title='🎓 CS182 강의봇 🤖')
 st.title('🎓 CS182 강의봇 🤖')
@@ -235,7 +200,7 @@ st.title('🎓 CS182 강의봇 🤖')
 import os
 api_key = st.sidebar.text_input("Enter your OpenAI API Key", type="password")
 save_button = st.sidebar.button("Save Key")
-if save_button and len(api_key)>10:
+if save_button and len(api_key) > 10:
     os.environ["OPENAI_API_KEY"] = api_key
     st.sidebar.success("API Key saved successfully!")
 
@@ -253,14 +218,14 @@ if 'raw_texts' not in st.session_state:
     st.session_state['raw_texts'] = {}
 
 # file upload
-uploaded_file = st.file_uploader('Upload lecture PDFs', type=['pdf'], accept_multiple_files=True)
+uploaded_files = st.file_uploader('Upload lecture PDFs', type=['pdf'], accept_multiple_files=True)
 
 # file upload logic
-if uploaded_file:
-    vectorstore, raw_text = process_uploaded_file(uploaded_file)
-    if vectorstore:
-        st.session_state['vectorstore'] = vectorstore
-        st.session_state['raw_text'] = raw_text
+if uploaded_files:
+    vectorstores, raw_texts = process_uploaded_files(uploaded_files)
+    if vectorstores:
+        st.session_state['vectorstores'] = vectorstores
+        st.session_state['raw_texts'] = raw_texts
 
 lecture_titles = [
     "Lecture 1: Introduction.",
@@ -275,6 +240,7 @@ lecture_titles = [
     "Lecture 10: Recurrent Neural Networks.",
     "Lecture 11: Sequence To Sequence Models."
 ]
+
 lecture_urls = {
     "Lecture 1": [
         "https://youtu.be/rSY1pVGdZ4I?si=HJ0w04z57oSg3l2T",
@@ -340,15 +306,11 @@ selected_lecture = st.sidebar.selectbox("강의를 선택하세요", lecture_tit
 
 if selected_lecture:
     lecture_key = selected_lecture.split(":")[0]
-    #if "youtube_scripts" not in st.session_state:
-    #    st.session_state["youtube_scripts"] = {}
+    st.write(f"선택된 강의: {lecture_key}")  # 디버깅 메시지 추가
     
     if lecture_key not in st.session_state["youtube_scripts"]:
         st.session_state["youtube_scripts"][lecture_key] = load_youtube_scripts(lecture_urls[lecture_key])
 
-    #if "youtube_vectorstores" not in st.session_state:
-    #    st.session_state["youtube_vectorstores"] = {}
-    
     if lecture_key not in st.session_state["youtube_vectorstores"]:
         scripts = st.session_state["youtube_scripts"][lecture_key]
         all_splits = []
@@ -360,20 +322,15 @@ if selected_lecture:
             splits = text_splitter.create_documents([script])
             all_splits.extend(splits)
         try:
-            #embeddings = OpenAIEmbeddings().embed_documents([doc.page_content for doc in all_splits])
-            #if not embeddings:
-            #    st.error("Failed to generate embeddings. Check your API key and internet connection.")
             vectorstore = FAISS.from_documents(documents=all_splits, embedding=OpenAIEmbeddings())
             st.session_state["youtube_vectorstores"][lecture_key] = vectorstore
         except Exception as e:
             st.error(f"Error creating FAISS vectorstore for YouTube scripts of {lecture_key}: {e}")
 
-# chatbot greatings
+# chatbot greetings
 if "messages" not in st.session_state:
     st.session_state["messages"] = [
-        ChatMessage(
-            role="assistant", content="안녕하세요✋! 저는 CS182 강의에 대한 이해를 도와주는 챗봇입니다. 어떤게 궁금하신가요?"
-        )
+        ChatMessage(role="assistant", content="안녕하세요✋! 저는 CS182 강의에 대한 이해를 도와주는 챗봇입니다. 어떤게 궁금하신가요?")
     ]
 
 # conversation history print 
