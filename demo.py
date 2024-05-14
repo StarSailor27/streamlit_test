@@ -360,9 +360,9 @@ if selected_lecture:
             splits = text_splitter.create_documents([script])
             all_splits.extend(splits)
         try:
-            embeddings = OpenAIEmbeddings().embed_documents([doc.page_content for doc in all_splits])
-            if not embeddings:
-                st.error("Failed to generate embeddings. Check your API key and internet connection.")
+            #embeddings = OpenAIEmbeddings().embed_documents([doc.page_content for doc in all_splits])
+            #if not embeddings:
+            #    st.error("Failed to generate embeddings. Check your API key and internet connection.")
             vectorstore = FAISS.from_documents(documents=all_splits, embedding=OpenAIEmbeddings())
             st.session_state["youtube_vectorstores"][lecture_key] = vectorstore
         except Exception as e:
