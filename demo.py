@@ -266,17 +266,7 @@ lecture_titles = [
     "Lecture 8: Computer Vision.",
     "Lecture 9: Generating Images from CNNs.",
     "Lecture 10: Recurrent Neural Networks.",
-    "Lecture 11: Sequence To Sequence Models.",
-    "Lecture 12: Transformers.",
-    "Lecture 13: Applications: NLP.",
-    "Lecture 14: Learning-Based Control & Imitation.",
-    "Lecture 15: Reinforcement Learning.",
-    "Lecture 16: Q-Learning.",
-    "Lecture 17: Autoencoders & Latent Variable Models.",
-    "Lecture 18: Variational Autoencoders & Invertible Models.",
-    "Lecture 19: Generative Adversarial Networks.",
-    "Lecture 20: Adversarial Examples.",
-    "Lecture 21: Meta Learning."
+    "Lecture 11: Sequence To Sequence Models."
 ]
 lecture_urls = {
     "Lecture 1": [
@@ -338,26 +328,38 @@ lecture_urls = {
     ],
 }
 
-if "youtube_scripts" not in st.session_state:
-    st.session_state["youtube_scripts"] = process_youtube_scripts(lecture_urls)
-
-if "youtube_vectorstores" not in st.session_state:
-    youtube_vectorstores = {}
-    for lecture, scripts in st.session_state["youtube_scripts"].items():
-        all_splits = []
-        for script in scripts:
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=500,
-                chunk_overlap=50
-            )
-            splits = text_splitter.create_documents([script.page_content])
-            all_splits.extend(splits)
-        vectorstore = FAISS.from_documents(documents=all_splits, embedding=OpenAIEmbeddings())
-        youtube_vectorstores[lecture] = vectorstore
-    st.session_state['youtube_vectorstores'] = youtube_vectorstores
-
 st.sidebar.header("강의 목록")
 selected_lecture = st.sidebar.selectbox("강의를 선택하세요", lecture_titles)
+
+if selected_lecture:
+    lecture_key = selected_lecture.split(":")[0]
+    if "youtube_scripts" not in st.session_state:
+        st.session_state["youtube_scripts"] = {}
+    
+    if lecture_key not in st.session_state["youtube_scripts"]:
+        st.session_state["youtube_scripts"][lecture_key] = load_youtube_scripts(lecture_urls[lecture_key])
+
+    if "youtube_vectorstores" not in st.session_state:
+        st.session_state["youtube_vectorstores"] = {}
+    
+    if lecture_key not in st.session_state["youtube_vectorstores"]:
+        scripts = st.session_state["youtube_scripts"][lecture_key]
+        all_splits = []
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=500,
+            chunk_overlap=50
+        )
+        for script in scripts:
+            splits = text_splitter.create_documents([script])
+            all_splits.extend(splits)
+        try:
+            embeddings = OpenAIEmbeddings().embed_documents([doc.page_content for doc in all_splits])
+            if not embeddings:
+                st.error("Failed to generate embeddings. Check your API key and internet connection.")
+            vectorstore = FAISS.from_documents(documents=all_splits, embedding=OpenAIEmbeddings())
+            st.session_state["youtube_vectorstores"][lecture_key] = vectorstore
+        except Exception as e:
+            st.error(f"Error creating FAISS vectorstore for YouTube scripts of {lecture_key}: {e}")
 
 # chatbot greatings
 if "messages" not in st.session_state:
